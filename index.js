@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const cors = require("cors");
 require("dotenv").config();
 const app = express();
@@ -29,12 +29,45 @@ async function run() {
       res.send(result)
     })
 
+    // parcels api
+    // GET: All parcels OR parcels by user (created_by), sorted by latest
+    app.get('/parcels', async (req, res) => {
+      try {
+        const userEmail = req.query.email;
+
+        const query = userEmail ? { created_by: userEmail } : {};
+        const options = {
+          sort: { createdAt: -1 }, // Newest first
+        };
+
+        const parcels = await parcelCollection.find(query, options).toArray();
+        res.send(parcels);
+      } catch (error) {
+        console.error('Error fetching parcels:', error);
+        res.status(500).send({ message: 'Failed to get parcels' });
+      }
+    });
+
     // post parcel
     app.post('/parcels', async (req, res) => {
       const newParcel = req.body;
       const result = await parcelCollection.insertOne(newParcel)
       res.send(result)
     })
+
+    // delete parcel data
+    app.delete('/parcels/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const result = await parcelCollection.deleteOne({ _id: new ObjectId(id) });
+
+        res.send(result);
+      } catch (error) {
+        console.error('Error deleting parcel:', error);
+        res.status(500).send({ message: 'Failed to delete parcel' });
+      }
+    });
 
 
     // Send a ping to confirm a successful connection
