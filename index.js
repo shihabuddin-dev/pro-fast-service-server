@@ -34,6 +34,7 @@ async function run() {
     const usersCollection = db.collection('users')
     const parcelCollection = db.collection('parcels')
     const paymentsCollection = db.collection('payments')
+    const ridersCollection = db.collection('riders')
 
     // custom middleware
     const verifyFBToken = async (req, res, next) => {
@@ -81,7 +82,7 @@ async function run() {
         const userEmail = req.query.email;
         console.log('decoded', req.decoded)
         if (req.decoded.email !== userEmail) {
-       return res.status(403).send({ message: 'forbidden access' })
+          return res.status(403).send({ message: 'forbidden access' })
         }
 
         const query = userEmail ? { created_by: userEmail } : {};
@@ -226,6 +227,58 @@ async function run() {
         res.json({ clientSecret: paymentIntent.client_secret });
       } catch (error) {
         res.status(500).json({ error: error.message });
+      }
+    });
+
+
+    // rider info 
+    // app.get('/riders', async (req, res) => {
+    //   const result = await ridersCollection.find().toArray()
+    //   res.send(result)
+    // })
+    app.post('/riders', async (req, res) => {
+      const rider = req.body;
+      const result = await ridersCollection.insertOne(rider)
+      res.send(result)
+    })
+
+    app.get("/riders/pending", async (req, res) => {
+      try {
+        const pendingRiders = await ridersCollection
+          .find({ status: "pending" })
+          .toArray();
+
+        res.send(pendingRiders);
+      } catch (error) {
+        console.error("Failed to load pending riders:", error);
+        res.status(500).send({ message: "Failed to load pending riders" });
+      }
+    });
+
+    app.get("/riders/active", async (req, res) => {
+      const result = await ridersCollection.find({ status: "active" }).toArray();
+      res.send(result);
+    });
+
+    app.patch("/riders/:id/status", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+      const query = { _id: new ObjectId(id) }
+      const updateDoc = {
+        $set:
+        {
+          status
+        }
+      }
+
+      try {
+        const result = await ridersCollection.updateOne(
+          query, updateDoc
+
+        );
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to update rider status" });
       }
     });
 
