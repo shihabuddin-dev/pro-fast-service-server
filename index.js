@@ -4,12 +4,20 @@ const cors = require("cors");
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 3000;
+const admin = require("firebase-admin");
 
 const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// firebase admin
+const serviceAccount = require("./firebase-admin-key.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 
 // mongoDB
 const client = new MongoClient(process.env.MONGODB_URI, {
@@ -23,20 +31,58 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 async function run() {
   try {
     const db = client.db('parcelDB')
+    const usersCollection = db.collection('users')
     const parcelCollection = db.collection('parcels')
     const paymentsCollection = db.collection('payments')
 
-    // get all parcel
-    app.get('/parcels', async (req, res) => {
-      const result = await parcelCollection.find().toArray()
+    // custom middleware
+    const verifyFBToken = async (req, res, next) => {
+      const authHeader = req.headers.authorization
+      if (!authHeader) {
+        return res.status(401).send({ message: 'UnAuthorized Access' })
+      }
+      const token = authHeader.split(' ')[1]
+      if (!token) {
+
+        return res.status(401).send({ message: 'UnAuthorized Access' })
+      }
+
+      // varify the token
+      try {
+        const decoded = await admin.auth().verifyIdToken(token)
+        req.decoded = decoded;
+        next()
+      } catch (error) {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
+    }
+
+
+    app.get('/users', async (req, res) => {
+      res.send(await usersCollection.find().toArray())
+    })
+    // users related api
+    app.post('/users', async (req, res) => {
+      const email = req.body.email;
+      const userExists = await usersCollection.findOne({ email })
+      if (userExists) {
+        return res.status(200).send({ message: 'user alresdy exists', inserted: false })
+      }
+      const user = req.body;
+      const result = await usersCollection.insertOne(user)
       res.send(result)
     })
 
+
     // parcels api
     // GET: All parcels OR parcels by user (created_by), sorted by latest
-    app.get('/parcels', async (req, res) => {
+    app.get('/parcels', verifyFBToken, async (req, res) => {
       try {
         const userEmail = req.query.email;
+        console.log('decoded', req.decoded)
+        if (req.decoded.email !== userEmail) {
+       return res.status(403).send({ message: 'forbidden access' })
+        }
 
         const query = userEmail ? { created_by: userEmail } : {};
         const options = {
@@ -90,21 +136,21 @@ async function run() {
       }
     });
 
-     app.post("/tracking", async (req, res) => {
-            const { tracking_id, parcel_id, status, message, updated_by='' } = req.body;
+    app.post("/tracking", async (req, res) => {
+      const { tracking_id, parcel_id, status, message, updated_by = '' } = req.body;
 
-            const log = {
-                tracking_id,
-                parcel_id: parcel_id ? new ObjectId(parcel_id) : undefined,
-                status,
-                message,
-                time: new Date(),
-                updated_by,
-            };
+      const log = {
+        tracking_id,
+        parcel_id: parcel_id ? new ObjectId(parcel_id) : undefined,
+        status,
+        message,
+        time: new Date(),
+        updated_by,
+      };
 
-            const result = await trackingCollection.insertOne(log);
-            res.send({ success: true, insertedId: result.insertedId });
-        });
+      const result = await trackingCollection.insertOne(log);
+      res.send({ success: true, insertedId: result.insertedId });
+    });
 
 
     // getting payments info
