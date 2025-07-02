@@ -33,6 +33,7 @@ async function run() {
     const db = client.db('parcelDB')
     const usersCollection = db.collection('users')
     const parcelsCollection = db.collection('parcels')
+            const trackingsCollection = db.collection("trackings");
     const paymentsCollection = db.collection('payments')
     const ridersCollection = db.collection('riders')
 
@@ -282,6 +283,20 @@ async function run() {
         res.status(500).send({ message: "Failed to update status" });
       }
     });
+    app.patch("/parcels/:id/cashout", async (req, res) => {
+      const id = req.params.id;
+      const result = await parcelsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            cashout_status: "cashed_out",
+            cashed_out_at: new Date()
+          }
+        }
+      );
+      res.send(result);
+    });
+
 
     // delete parcel data
     app.delete('/parcels/:id', async (req, res) => {
@@ -297,7 +312,18 @@ async function run() {
       }
     });
 
-    app.post("/tracking", async (req, res) => {
+    // trackings api 
+      app.get("/trackings/:trackingId", async (req, res) => {
+            const trackingId = req.params.trackingId;
+
+            const updates = await trackingsCollection
+                .find({ tracking_id: trackingId })
+                .sort({ timestamp: 1 }) // sort by time ascending
+                .toArray();
+
+            res.json(updates);
+        });
+    app.post("/trackings", async (req, res) => {
       const { tracking_id, parcel_id, status, message, updated_by = '' } = req.body;
 
       const log = {
@@ -309,9 +335,10 @@ async function run() {
         updated_by,
       };
 
-      const result = await trackingCollection.insertOne(log);
+      const result = await trackingsCollection.insertOne(log);
       res.send({ success: true, insertedId: result.insertedId });
     });
+    
 
 
     // getting payments info
@@ -393,11 +420,10 @@ async function run() {
 
 
 
-
     // riders api 
 
     // GET: Get pending delivery tasks for a rider
-    app.get('/rider/parcels', verifyFBToken,verifyRider, async (req, res) => {
+    app.get('/rider/parcels', verifyFBToken, verifyRider, async (req, res) => {
       try {
         const email = req.query.email;
 
@@ -524,6 +550,8 @@ async function run() {
         res.status(500).send({ message: "Failed to update rider status" });
       }
     });
+
+
 
 
 
